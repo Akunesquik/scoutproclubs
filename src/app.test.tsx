@@ -8,6 +8,8 @@ import { PlayerSearch } from './components/PlayerSearch';
 import { RecentMatches } from './components/RecentMatches';
 import { StatsGrid } from './components/StatsGrid';
 
+beforeEach(() => localStorage.clear());
+
 describe('PlayerSearch', () => {
   it('affiche une erreur si le champ est vide et n’appelle pas onSearch', async () => {
     const onSearch = vi.fn();
@@ -46,7 +48,7 @@ describe('états', () => {
 describe('StatsGrid', () => {
   it('affiche « Non disponible » pour null et 0 pour zéro', () => {
     render(<StatsGrid stats={{ gamesPlayed: 5, goals: 0, assists: null, cleanSheets: null, averageRating: 7.25, winRate: null }} />);
-    const goals = screen.getByText('Buts').parentElement!;
+    const goals = screen.getByText('Buts', { selector: '.stat__label' }).parentElement!;
     expect(goals).toHaveTextContent('0');
     expect(screen.getByText('Passes décisives').parentElement).toHaveTextContent('Non disponible');
     expect(screen.getByText('Note moyenne').parentElement).toHaveTextContent('7,3');
@@ -55,20 +57,30 @@ describe('StatsGrid', () => {
 
 describe('RecentMatches', () => {
   const matches: RecentMatch[] = [
-    { id: '1', playedAt: null, opponent: 'Rivals', scoreFor: 2, scoreAgainst: 1, goals: 1, assists: 0, rating: 8, details: [{ category: 'Attaque', label: 'Tirs', value: 4 }] },
-    { id: '2', playedAt: null, opponent: 'Other', scoreFor: null, scoreAgainst: null, goals: null, assists: null, rating: null, details: [] },
+    { id: '1', matchType: 'leagueMatch', playedAt: '2026-10-22T19:30:00.000Z', durationSeconds: 900, opponent: 'Rivals', scoreFor: 2, scoreAgainst: 1, goals: 1, assists: 0, rating: 8, details: [{ category: 'Attaque', label: 'Tirs', value: 4 }] },
+    { id: '2', matchType: 'friendlyMatch', playedAt: null, durationSeconds: null, opponent: 'Other', scoreFor: null, scoreAgainst: null, goals: null, assists: null, rating: null, details: [] },
   ];
   it('déplie et replie les statistiques détaillées d’une ligne', async () => {
     render(<RecentMatches matches={matches} />);
     expect(screen.queryByText('Tirs')).not.toBeInTheDocument();
     await userEvent.click(screen.getByText('Rivals'));
     expect(screen.getByText('Tirs')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Attaque' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Gardien' })).not.toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Attaque' })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Gardien' })).not.toBeInTheDocument();
     const [toggle] = screen.getAllByRole('button');
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await userEvent.click(toggle);
     expect(screen.queryByText('Tirs')).not.toBeInTheDocument();
+  });
+  it('affiche l’heure de début et de fin estimées', () => {
+    render(<RecentMatches matches={matches} />);
+    expect(screen.getByText(/15 min/)).toBeInTheDocument();
+  });
+  it('affiche le pourcentage dans la même case que sa statistique', async () => {
+    const withPct: RecentMatch[] = [{ ...matches[0], details: [{ category: 'Passes', label: 'Passes réussies', value: 29, percent: 80.6 }] }];
+    render(<RecentMatches matches={withPct} />);
+    await userEvent.click(screen.getByText('Rivals'));
+    expect(screen.getByText('Passes réussies').closest('tr')).toHaveTextContent('29 (80,6 %)');
   });
   it('indique l’absence de détails sans inventer de valeurs', async () => {
     render(<RecentMatches matches={matches} />);
@@ -78,6 +90,14 @@ describe('RecentMatches', () => {
 });
 
 describe('App', () => {
+  it('mémorise pseudo et club entre deux affichages', async () => {
+    const { unmount } = render(<App />);
+    await userEvent.clear(screen.getByLabelText('Pseudo du joueur'));
+    await userEvent.type(screen.getByLabelText('Pseudo du joueur'), 'Zed');
+    unmount();
+    render(<App />);
+    expect(screen.getByLabelText('Pseudo du joueur')).toHaveValue('Zed');
+  });
   it('préremplit pseudo et club de développement', () => {
     render(<App />);
     expect(screen.getByLabelText('Pseudo du joueur')).toHaveValue('Symphony-Klebar');
@@ -101,6 +121,8 @@ describe('App', () => {
       club: null,
       stats: { gamesPlayed: 1, goals: null, assists: null, cleanSheets: null, averageRating: null, winRate: null },
       recentMatches: null,
+      historyCompleteFrom: null,
+      shortMatchesHidden: 0,
       unavailable: ['Historique des matchs récents'],
     };
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(player))));

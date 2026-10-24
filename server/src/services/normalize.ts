@@ -1,4 +1,4 @@
-import type { MatchStat, MatchStatCategory, PlayerStats, RecentMatch } from '../../../shared/types';
+import type { MatchStat, MatchStatCategory, MatchType, PlayerStats, RecentMatch } from '../../../shared/types';
 
 type Json = Record<string, unknown>;
 
@@ -41,6 +41,7 @@ export interface MemberRecord {
   name: string;
   position: string | null;
   stats: PlayerStats;
+  raw: Record<string, unknown>;
 }
 
 export function normalizeMembers(payload: unknown): MemberRecord[] | null {
@@ -51,6 +52,7 @@ export function normalizeMembers(payload: unknown): MemberRecord[] | null {
     if (!isObject(m) || !name) continue;
     out.push({
       name,
+      raw: m,
       position: toText(m.favoritePosition ?? m.proPos),
       stats: {
         gamesPlayed: toNumber(m.gamesPlayed),
@@ -85,6 +87,39 @@ const MATCH_STAT_FIELDS: [string, MatchStatCategory, string][] = [
   ['cleansheetsgk', 'Gardien', 'Clean sheets (gardien)'],
 ];
 
+/** Somme les compteurs `id:nombre` des 4 champs `match_event_aggregate_*` ; null si aucun n'est renseigné. */
+export function parseEventAggregates(player: Json): Map<number, number> | null {
+  const events = new Map<number, number>();
+  let present = false;
+  for (let i = 0; i < 4; i++) {
+    const raw = player[`match_event_aggregate_${i}`];
+    if (typeof raw !== 'string' || raw === '') continue;
+    for (const pair of raw.split(',')) {
+      const [id, count] = pair.split(':').map(Number);
+      if (Number.isFinite(id) && Number.isFinite(count)) {
+        events.set(id, (events.get(id) ?? 0) + count);
+        present = true;
+      }
+    }
+  }
+  return present ? events : null;
+}
+
+// Codes d'événements issus d'une recherche communautaire (Interactive-63/eafc-pro-clubs-api-research), non confirmés par EA.
+const POSSESSION_LOST: [number, string][] = [[105, 'tiers défensif'], [106, 'milieu'], [107, 'tiers offensif']];
+const POSSESSION_WON: [number, string][] = [[108, 'tiers défensif'], [109, 'milieu'], [110, 'tiers offensif']];
+
+function possessionStats(player: Json): MatchStat[] {
+  const events = parseEventAggregates(player);
+  if (!events) return [];
+  const count = (id: number) => events.get(id) ?? 0;
+  const build = (title: string, codes: [number, string][]): MatchStat[] => [
+    { category: 'Possession', label: title, value: codes.reduce((s, [id]) => s + count(id), 0) },
+    ...codes.map(([id, zone]) => ({ category: 'Possession' as const, label: `${title} (${zone})`, value: count(id) })),
+  ];
+  return [...build('Ballons récupérés', POSSESSION_WON), ...build('Ballons perdus', POSSESSION_LOST)];
+}
+
 export function normalizeMatchDetails(player: Json): MatchStat[] {
   const lower = new Map(Object.entries(player).map(([k, v]) => [k.toLowerCase(), v]));
   const out: MatchStat[] = [];
@@ -93,11 +128,32 @@ export function normalizeMatchDetails(player: Json): MatchStat[] {
     if (n === null) continue;
     out.push({ category, label, value: key === 'secondsplayed' ? Math.round(n / 60) : n });
   }
-  return out;
+  // Pourcentages dérivés : seulement si numérateur et dénominateur existent et que le dénominateur est > 0.
+  const num = (key: string) => toNumber(lower.get(key));
+  const pct = (n: number | null, d: number | null) => (n !== null && d !== null && d > 0 ? Math.round((n / d) * 1000) / 10 : undefined);
+  const attach = (label: string, percent: number | undefined, percentNote?: string) => {
+    const stat = out.find((s) => s.label === label);
+    if (stat && percent !== undefined) Object.assign(stat, { percent, percentNote });
+  };
+  attach('Passes réussies', pct(num('passesmade'), num('passattempts')));
+  attach('Tacles réussis', pct(num('tacklesmade'), num('tackleattempts')));
+  attach('Buts', pct(num('goals'), num('shots')), 'des tirs');
+  const saves = num('saves');
+  const conceded = num('goalsconceded');
+  attach('Arrêts', saves !== null && conceded !== null ? pct(saves, saves + conceded) : undefined, 'des tirs reçus');
+  out.push(...possessionStats(player));  return out;
+}
+
+/** Durée réelle (`realtimegame`). Sans elle, un temps de jeu < 5 min prouve que le match est court ; sinon inconnue. */
+function matchDuration(me: Record<string, unknown>): number | null {
+  const real = toNumber(me.realtimegame);
+  if (real !== null) return real;
+  const played = toNumber(me.secondsplayed);
+  return played !== null && played < 300 ? played : null;
 }
 
 /** Extrait les matchs où le joueur apparaît ; renvoie null si la forme de la réponse est inattendue. */
-export function normalizeMatches(payload: unknown, clubId: string, playerName: string): RecentMatch[] | null {
+export function normalizeMatches(payload: unknown, clubId: string, playerName: string, matchType: MatchType = 'leagueMatch'): RecentMatch[] | null {
   if (!Array.isArray(payload)) return null;
   const target = playerName.toLowerCase();
   const out: RecentMatch[] = [];
@@ -116,6 +172,7 @@ export function normalizeMatches(payload: unknown, clubId: string, playerName: s
 
     out.push({
       id: toText(match.matchId) ?? `${ts ?? 'm'}-${out.length}`,
+      matchType,
       playedAt: ts === null ? null : new Date(ts * 1000).toISOString(),
       opponent: isObject(oppClub) && isObject(oppClub.details) ? toText(oppClub.details.name) : null,
       scoreFor: isObject(ownClub) ? toNumber(ownClub.goals ?? ownClub.score) : null,
@@ -123,7 +180,9 @@ export function normalizeMatches(payload: unknown, clubId: string, playerName: s
       goals: toNumber(me.goals),
       assists: toNumber(me.assists),
       rating: toNumber(me.rating),
+      durationSeconds: matchDuration(me),
       details: normalizeMatchDetails(me),
+      raw: me,
     });
   }
   return out;

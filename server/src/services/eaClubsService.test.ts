@@ -33,6 +33,61 @@ describe('eaClubsService', () => {
     expect(r.unavailable).toContain('Historique des matchs récents');
   });
 
+  const rawMatch = (id: string, ts: number) => ({
+    matchId: id, timestamp: ts,
+    clubs: { '1': { goals: '1' }, '2': { goals: '0', details: { name: 'Rivals' } } },
+    players: { '1': { p: { playername: 'Alpha', goals: '1' } } },
+  });
+
+  it('fusionne les trois types de matchs, triés par date, et signale la troncature à 10', async () => {
+    const full = Array.from({ length: 10 }, (_, i) => rawMatch(`l${i}`, 2000 - i * 10)); // le plus ancien : 1910
+    const matches = {
+      list: vi.fn(async ({ type }: { type: string }) =>
+        type === 'leagueMatch' ? full : type === 'friendlyMatch' ? [rawMatch('f1', 1995)] : []),
+    };
+    const r = await svc(fake({ matches })).findPlayer(input);
+    expect(matches.list).toHaveBeenCalledTimes(3);
+    expect(r.recentMatches).toHaveLength(11);
+    expect(r.recentMatches!.find((x) => x.id === 'f1')!.matchType).toBe('friendlyMatch');
+    expect(r.recentMatches!.map((x) => x.playedAt)).toEqual([...r.recentMatches!.map((x) => x.playedAt)].sort().reverse());
+    expect(r.historyCompleteFrom).toBe(new Date(1910 * 1000).toISOString());
+  });
+
+  it('masque les matchs de moins de 5 minutes, sans exclure ceux dont la durée est inconnue', async () => {
+    const withStats = (id: string, ts: number, stats: Record<string, string>) => {
+      const m = rawMatch(id, ts);
+      Object.assign(m.players['1'].p, stats);
+      return m;
+    };
+    const matches = {
+      list: vi.fn(async ({ type }: { type: string }) =>
+        type === 'leagueMatch'
+          ? [
+              withStats('ok', 400, { realtimegame: '900', secondsplayed: '5400' }),
+              withStats('court', 300, { realtimegame: '16', secondsplayed: '5400' }),
+              withStats('1min', 200, { realtimegame: '900', secondsplayed: '60' }),
+              rawMatch('inconnu', 100),
+            ]
+          : []),
+    };
+    const r = await svc(fake({ matches })).findPlayer(input);
+    expect(r.recentMatches!.map((x) => x.id)).toEqual(['ok', 'inconnu']);
+    expect(r.shortMatchesHidden).toBe(2);
+  });
+
+  it('garde les types récupérés si un type échoue', async () => {
+    const matches = {
+      list: vi.fn(async ({ type }: { type: string }) => {
+        if (type === 'playoffMatch') throw new ProClubsTimeoutError();
+        return type === 'leagueMatch' ? [rawMatch('l1', 100)] : [];
+      }),
+    };
+    const r = await svc(fake({ matches })).findPlayer(input);
+    expect(r.recentMatches).toHaveLength(1);
+    expect(r.historyCompleteFrom).toBeNull();
+    expect(r.unavailable).toContain('Certains types de matchs n’ont pas pu être récupérés');
+  });
+
   it('utilise directement un identifiant de club numérique', async () => {
     const client = fake();
     await svc(client).findPlayer({ ...input, club: '759189' });

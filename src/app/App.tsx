@@ -7,6 +7,8 @@ import { LoadingState } from '../components/LoadingState';
 import { PlayerProfile } from '../components/PlayerProfile';
 import { PlayerSearch } from '../components/PlayerSearch';
 import { RecentMatches } from '../components/RecentMatches';
+import { RawData } from '../components/RawData';
+import { SessionSummary } from '../components/SessionSummary';
 import { StatsGrid } from '../components/StatsGrid';
 import { DEV_DEFAULTS } from './devDefaults';
 import { ApiError, fetchPlayer } from '../services/playerService';
@@ -54,13 +56,21 @@ export function App() {
             <>
               <PlayerProfile player={state.player} />
               <StatsGrid stats={state.player.stats} />
-              <RecentMatches matches={state.player.recentMatches} />
+              {state.player.recentMatches !== null && state.player.recentMatches.length > 0 && (
+                <SessionSummary
+                  key={state.player.source.retrievedAt}
+                  matches={state.player.recentMatches}
+                  historyCompleteFrom={state.player.historyCompleteFrom}
+                />
+              )}
+              <RecentMatches matches={state.player.recentMatches} shortMatchesHidden={state.player.shortMatchesHidden} />
               {state.player.unavailable.length > 0 && (
                 <section className="card notice" aria-labelledby="na-title">
                   <h3 id="na-title">Données non disponibles via la source</h3>
                   <ul>{state.player.unavailable.map((u) => <li key={u}>{u}</li>)}</ul>
                 </section>
               )}
+              <RawData member={state.player.rawMember} matches={state.player.recentMatches} />
             </>
           )}
         </div>

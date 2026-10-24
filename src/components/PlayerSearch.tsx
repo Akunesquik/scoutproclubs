@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { PLATFORMS, type Platform } from '../../shared/types';
 import { validateSearch, type SearchInput } from '../../shared/validation';
+import { useStoredState } from '../services/storedState';
 
 interface Props {
   loading: boolean;
@@ -10,9 +11,10 @@ interface Props {
 }
 
 export function PlayerSearch({ loading, onSearch, initialName = '', initialClub = '' }: Props) {
-  const [name, setName] = useState(initialName);
-  const [club, setClub] = useState(initialClub);
-  const [platform, setPlatform] = useState<Platform>('common-gen5');
+  const [name, setName] = useStoredState('scout.name', initialName);
+  const [club, setClub] = useStoredState('scout.club', initialClub);
+  const [platform, setPlatformValue] = useStoredState('scout.platform', 'common-gen5');
+  const setPlatform = (p: Platform) => setPlatformValue(p);
   const [error, setError] = useState<{ field: string; message: string } | null>(null);
 
   function submit(e: FormEvent) {
