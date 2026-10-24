@@ -50,3 +50,13 @@ src/      app/, components/, services/, styles/
 ```
 
 Les fixtures des tests sont fabriquées à la main : ce ne sont pas des données EA actuelles.
+
+## Déploiement (Render, service Web unique)
+
+GitHub Pages est impossible : l'API d'EA refuse les appels depuis un navigateur (403, pas de CORS), le backend Node est donc nécessaire. Un seul service Render sert l'API et l'interface (`dist/`).
+
+- Build : `npm ci --include=dev && npm run build`
+- Start : `npm start`
+- Variables : `NODE_VERSION=22.18.0`, `EA_UNOFFICIAL_ENABLED=true`
+- Voir `render.yaml` (Blueprint). Le plan gratuit se met en veille après inactivité.
+- Avant publication : supprimer `src/app/devDefaults.ts` et son usage.

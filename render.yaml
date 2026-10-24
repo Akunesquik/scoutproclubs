@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: scoutproclubs
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.18.0
+      - key: EA_UNOFFICIAL_ENABLED
+        value: "true"
