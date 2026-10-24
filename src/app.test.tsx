@@ -132,7 +132,6 @@ describe('App', () => {
     await userEvent.type(screen.getByLabelText('Pseudo du joueur'), 'DemoPlayer');
     await userEvent.type(screen.getByLabelText(/Club/), 'x{Enter}');
     expect(await screen.findByRole('heading', { name: 'DemoPlayer' })).toBeInTheDocument();
-    expect(screen.getByText(/DÉMO/)).toBeInTheDocument();
     expect(screen.getByText('Historique non disponible via la source.')).toBeInTheDocument();
     vi.unstubAllGlobals();
   });

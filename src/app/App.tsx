@@ -54,7 +54,7 @@ export function App() {
           {state.status === 'success' && (
             <>
               <PlayerProfile player={state.player} />
-              <StatsGrid stats={state.player.stats} />
+              
               {state.player.recentMatches !== null && state.player.recentMatches.length > 0 && (
                 <SessionSummary
                   key={state.player.source.retrievedAt}
@@ -62,6 +62,7 @@ export function App() {
                   historyCompleteFrom={state.player.historyCompleteFrom}
                 />
               )}
+              <StatsGrid stats={state.player.stats} />
               <RecentMatches matches={state.player.recentMatches} shortMatchesHidden={state.player.shortMatchesHidden} />
             </>
           )}

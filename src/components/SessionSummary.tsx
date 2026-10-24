@@ -31,6 +31,15 @@ function Stat({ label, value, extra }: { label: string; value: string; extra?: s
   );
 }
 
+function Row({ label, value, extra }: { label: string; value: string; extra?: string }) {
+  return (
+    <div className="srow">
+      <dt>{label}</dt>
+      <dd className={value === NOT_AVAILABLE ? 'stat__value--na' : ''}>{value}{extra && <small className="tile__extra"> {extra}</small>}</dd>
+    </div>
+  );
+}
+
 export function SessionSummary({ matches, historyCompleteFrom }: Props) {
   const initial = useMemo(() => defaultRange(matches), [matches]);
   const [from, setFrom] = useStoredState('scout.session.from', initial.from);
@@ -78,22 +87,27 @@ export function SessionSummary({ matches, historyCompleteFrom }: Props) {
           {summary.matchCount === 0 ? (
             <p className="muted">Aucun match du joueur sur cette période.</p>
           ) : (
-            <div className="session-stats">
-              <Stat label="Matchs" value={String(summary.matchCount)} />
-              <Stat label="Bilan V · N · D" extra={summary.winPct === null ? undefined : pct(summary.winPct)} value={summary.record ? `${summary.record.wins} · ${summary.record.draws} · ${summary.record.losses}` : NOT_AVAILABLE} />
-              <Stat label="Note moyenne" value={num(summary.averageRating, 2)} />
-              <Stat label="Buts" extra={summary.shotConversion === null ? undefined : `${pct(summary.shotConversion)} des tirs`} value={num(summary.goals)} />
-              <Stat label="Passes déc." value={num(summary.assists)} />
-              <Stat label="Tirs" value={num(summary.shots)} />
-              <Stat label="Passes réussies / tentées" extra={summary.passAccuracy === null ? undefined : pct(summary.passAccuracy)} value={ratio(summary.passesMade, summary.passAttempts)} />
-              <Stat label="Tacles réussis / tentés" extra={summary.tackleSuccess === null ? undefined : pct(summary.tackleSuccess)} value={ratio(summary.tacklesMade, summary.tackleAttempts)} />
-
-
-              <Stat label="Homme du match" extra={summary.momPct === null ? undefined : `${pct(summary.momPct)} des matchs`} value={num(summary.manOfTheMatch)} />
-              <Stat label="Ballons récupérés" extra="(estim.)" value={num(summary.possessionWon)} />
-              <Stat label="Ballons perdus" extra="(estim.)" value={num(summary.possessionLost)} />
-              <Stat label="Minutes jouées" value={num(summary.minutesPlayed)} />
-            </div>
+            <>
+              <div className="kpis">
+                <Stat label="Matchs" value={String(summary.matchCount)} />
+                <Stat label="Bilan V · N · D" extra={summary.winPct === null ? undefined : `${pct(summary.winPct)} V`} value={summary.record ? `${summary.record.wins} · ${summary.record.draws} · ${summary.record.losses}` : NOT_AVAILABLE} />
+                <Stat label="Note moyenne" value={num(summary.averageRating, 2)} />
+                <Stat label="Homme du match" value={num(summary.manOfTheMatch)} />
+              </div>
+              <div className="panels">
+                <dl className="panel">
+                  <h4>Attaque</h4>
+                  <Row label="Buts" value={num(summary.goals)} extra={summary.shotConversion === null ? undefined : `${pct(summary.shotConversion)} des tirs`} />
+                  <Row label="Passes décisives" value={num(summary.assists)} />
+                  <Row label="Tirs" value={num(summary.shots)} />
+                </dl>
+                <dl className="panel">
+                  <h4>Passes &amp; défense</h4>
+                  <Row label="Passes réussies / tentées" value={ratio(summary.passesMade, summary.passAttempts)} extra={summary.passAccuracy === null ? undefined : pct(summary.passAccuracy)} />
+                  <Row label="Tacles réussis / tentés" value={ratio(summary.tacklesMade, summary.tackleAttempts)} extra={summary.tackleSuccess === null ? undefined : pct(summary.tackleSuccess)} />
+                </dl>
+              </div>
+            </>
           )}
           {summary.matchCount > 0 && (
             <>
